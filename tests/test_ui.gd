@@ -108,9 +108,12 @@ func test_practice_and_retry_r() -> bool:
 	e.ctrl_pressed = true
 	m._input(e)
 	eq(m.screen, "result", "Ctrl 付きの R ではもう1回にならない(FR-25)")
+	var seed_before: int = m.run["seed"]
+	OS.delay_usec(10)
 	press(m, KEY_R)
 	eq(m.screen, "play", "R でもう1回")
 	eq(int(m.run["mode"]), 1, "同じ入口")
+	ok(int(m.run["seed"]) != seed_before, "練習は毎回ちがう空(種を引き直す)")
 	_done(m)
 	return true
 

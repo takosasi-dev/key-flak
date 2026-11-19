@@ -47,6 +47,7 @@ func build(p_store: RefCounted) -> void:
 	_keys = Control.new()
 	_keys.size = size
 	_keys.visible = false
+	_keys.draw.connect(_draw_keys)  # 一時停止から開いた時の暗い幕より上に描く
 	add_child(_keys)
 	_keys.add_child(Kit.place(Kit.label(S.B_KEYS, 40, Kit.C_TEXT, 700), 0, 60, 1280, 60))
 	_keys.add_child(Kit.place(Kit.label(S.KEYS_HELP, 20, Kit.C_DIM), 0, 130, 1280, 32))
@@ -81,13 +82,13 @@ func _show_keys(on: bool) -> void:
 	held.clear()
 	_list.visible = not on
 	_keys.visible = on
-	queue_redraw()
+	_keys.queue_redraw()
 
 
 # フォーカスが外れた時は、押されている組を空にする(共通 §3 の 5)。
 func release_all() -> void:
 	held.clear()
-	queue_redraw()
+	_keys.queue_redraw()
 
 
 func key(ev: InputEventKey) -> void:
@@ -110,7 +111,7 @@ func _keys_key(ev: InputEventKey) -> void:
 	if ev.pressed and not ev.echo and ev.physical_keycode == KEY_ESCAPE:
 		_show_keys(false)
 		return
-	last_key = "physical_keycode %d (%s) / key_label %s / unicode %d / pressed %s / echo %s / ctrl %s alt %s meta %s shift %s" % [
+	last_key = S.KEY_DETAIL % [
 		ev.physical_keycode, OS.get_keycode_string(ev.physical_keycode), OS.get_keycode_string(ev.key_label), ev.unicode,
 		ev.pressed, ev.echo, ev.ctrl_pressed, ev.alt_pressed, ev.meta_pressed, ev.shift_pressed]
 	_detail.text = last_key
@@ -120,18 +121,20 @@ func _keys_key(ev: InputEventKey) -> void:
 			held[i] = true
 		else:
 			held.erase(i)
-	queue_redraw()
+	_keys.queue_redraw()
 
 
 # キーの確かめの図: 10 キーを並べ、押されているキーを光らせる。
-func _draw() -> void:
-	if not keys_view:
-		return
+var keys_drawn := 0  # 図を描いた回数(自動の確かめが読む)
+
+
+func _draw_keys() -> void:
+	keys_drawn += 1
 	var f := Kit.font(700)
 	for i in B.COLS:
 		var r := Rect2(Kit.col_x(i) - 52, 240, 104, 104)
 		var on := held.has(i)
-		draw_rect(r, Color(Kit.C_AIM, 0.85) if on else Color(1, 1, 1, 0.05))
-		draw_rect(r, Kit.C_AIM if on else Color(Kit.C_TEXT, 0.4), false, 3.0)
-		draw_string(f, Vector2(r.position.x, r.position.y + 68), S.KEYS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 40, Kit.C_BG if on else Kit.C_TEXT)
-	draw_string(f, Vector2(0, 410), str(held.size()), HORIZONTAL_ALIGNMENT_CENTER, 1280, 32, Kit.C_TEXT)
+		_keys.draw_rect(r, Color(Kit.C_AIM, 0.85) if on else Color(1, 1, 1, 0.05))
+		_keys.draw_rect(r, Kit.C_AIM if on else Color(Kit.C_TEXT, 0.4), false, 3.0)
+		_keys.draw_string(f, Vector2(r.position.x, r.position.y + 68), S.KEYS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 40, Kit.C_BG if on else Kit.C_TEXT)
+	_keys.draw_string(f, Vector2(0, 410), str(held.size()), HORIZONTAL_ALIGNMENT_CENTER, 1280, 32, Kit.C_TEXT)

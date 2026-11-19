@@ -68,6 +68,7 @@ const OFF := "切"
 const B_KEYS := "キーの確かめ"
 const B_BACK := "戻る"
 const KEYS_HELP := "押されているキーが光る。Esc で戻る"
+const KEY_DETAIL := "physical_keycode %d (%s) / key_label %s / unicode %d / pressed %s / echo %s / ctrl %s alt %s meta %s shift %s"
 
 # S5
 const PAUSE := "一時停止"

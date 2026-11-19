@@ -58,7 +58,7 @@ def main() -> int:
         frames = rest[0] if rest else "600"
         code = godot(["--fixed-fps", "60", "--quit-after", frames, "--", *rest[1:]])
         # --auto は S0 → 結果を 2 回通して SMOKE done を出す。出なければ途中で止まっている
-        if code == 0 and "--auto" in rest and b"SMOKE done" not in LAST_OUT[0]:
+        if code == 0 and "--auto" in rest and (b"SMOKE done" not in LAST_OUT[0] or b"SMOKE pause back" not in LAST_OUT[0]):
             print("SMOKE done が出ていない(どこかの画面で止まった)")
             return 1
         return code

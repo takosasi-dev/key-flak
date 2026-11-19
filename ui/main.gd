@@ -29,6 +29,7 @@ var lat_ms: Array = []  # 離してから爆発を描くまで(NFR-2)
 var _touch_note: Label = null
 var _visibility_cb: Variant = null
 var _auto_results := 0
+var _auto_keys := 0
 
 
 func _ready() -> void:
@@ -40,7 +41,7 @@ func _ready() -> void:
 	stage.add_child(Kit.place(bg, -2000, -2000, 5280, 4720))
 	store = Store.new()
 	_apply_settings()
-	auto = _flag("auto")
+	auto = _flag("auto") and not OS.has_feature("web")  # 公開版では効かせない(bot の点を保存しない)
 	if auto:
 		Engine.time_scale = 4.0  # 1 フレーム 8 tick(上限)で進める
 	_watch_visibility()
@@ -167,6 +168,14 @@ func _start(r: Dictionary) -> void:
 	current = play
 
 
+# もう1回・やり直す。今日の空は同じ種、練習は毎回ちがう空(種を引き直す)。
+func _again() -> void:
+	if int(run["mode"]) == Sim.MODE_PRACTICE:
+		var s := Time.get_ticks_usec() & 0xFFFFFFFF
+		run["seed"] = s if s != 0 else 1
+	_start(run)
+
+
 func _pause() -> void:
 	if play == null or pause_view != null or not play.is_playing():
 		return
@@ -185,7 +194,7 @@ func _on_pause(what: String) -> void:
 			pause_view = null
 			play.paused = false  # 押した tick から再開(待ち時間なし)
 		"restart":
-			_start(run)
+			_again()
 		"settings":
 			_show_settings("pause")
 		"title":
@@ -226,7 +235,7 @@ func _on_finished(result: Dictionary) -> void:
 	screen = "result"
 	var v := Result.new()
 	v.build(int(r["mode"]), result, rec, text)
-	v.retry.connect(func() -> void: _start(run))  # FR-18: 同じ入口。今日の空は同じ種
+	v.retry.connect(_again)  # FR-18: 同じ入口
 	v.to_title.connect(_show_title)
 	stage.add_child(v)
 	current = v
@@ -291,7 +300,35 @@ func _process(_delta: float) -> void:
 			_input(_key(KEY_X))
 		"title":
 			print("SMOKE title")
-			_input(_key(KEY_ENTER))  # 今日の空
+			if not _auto_keys:
+				_input(_key(KEY_DOWN))
+				_input(_key(KEY_DOWN))
+				_input(_key(KEY_ENTER))  # 設定
+			else:
+				_input(_key(KEY_ENTER))  # 今日の空
+		"settings":
+			# 設定 → キーの確かめ → A を押す → 戻る(一時停止から開いた時の図も描く)
+			if not current.keys_view and current.keys_drawn == 0:
+				for k in 3:
+					_input(_key(KEY_DOWN))
+				_input(_key(KEY_ENTER))
+				_input(_key(KEY_A))
+			elif current.keys_view and current.keys_drawn > 0:
+				print("SMOKE keys drawn %d held %d" % [current.keys_drawn, current.held.size()])
+				_auto_keys += 1
+				_input(_key(KEY_ESCAPE))
+				_input(_key(KEY_ESCAPE))
+		"play":
+			# 1 回目の回の途中で 1 度、一時停止 → 設定 → キーの確かめ → 戻る → 続ける
+			if _auto_keys == 1 and play.sim.tick > 600 and pause_view == null:
+				_input(_key(KEY_ESCAPE))
+				_input(_key(KEY_DOWN))
+				_input(_key(KEY_DOWN))
+				_input(_key(KEY_ENTER))
+			elif _auto_keys == 2 and pause_view != null:
+				print("SMOKE pause back")
+				_auto_keys += 1
+				_input(_key(KEY_ESCAPE))
 		"result":
 			if not current._retry.disabled:
 				if _auto_results >= 2:
