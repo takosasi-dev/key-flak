@@ -12,14 +12,14 @@ const PROPS := {
 	"TextEdit": ["text", "editable", "context_menu_enabled"],
 	"Label": ["text", "horizontal_alignment", "vertical_alignment"],
 	"BoxContainer": ["alignment"],
-	"Control": ["focus_mode", "mouse_filter", "custom_minimum_size"],
+	"Control": ["focus_mode", "mouse_filter", "custom_minimum_size", "pivot_offset", "scale"],
 	"Node": ["process_mode"],
 }
 const METHODS := {
 	"Time": ["get_ticks_usec", "get_ticks_msec", "get_date_dict_from_system"],
 	"JavaScriptBridge": ["eval", "get_interface", "create_callback"],
 	"DisplayServer": ["clipboard_set"],
-	"CanvasItem": ["draw_line", "draw_dashed_line", "draw_colored_polygon", "draw_polygon", "draw_polyline", "draw_circle", "draw_arc", "draw_rect", "draw_string", "queue_redraw"],
+	"CanvasItem": ["draw_line", "draw_dashed_line", "draw_colored_polygon", "draw_polygon", "draw_polyline", "draw_circle", "draw_arc", "draw_rect", "draw_string", "draw_string_outline", "draw_set_transform", "queue_redraw"],
 	"AudioStreamPlayer": ["play", "stop"],
 	"Font": ["get_string_size", "has_char"],
 	"RegEx": ["create_from_string", "search", "search_all"],

@@ -3,7 +3,7 @@
 extends RefCounted
 
 const NAME := "KeyFlak"
-const VERSION := "v0.1.0"
+const VERSION := "v0.2.0"
 const URL := "https://takosasi-dev.github.io/key-flak/"
 
 # 発射台のキーの印字(§9.2。左から 0〜9)
@@ -32,9 +32,10 @@ const BAR_WAVE := "波 %d"
 const BAR_POINTS := "%s点"
 const BAR_CHAIN := "連鎖 %d"
 const WAVE_CLEAR := "波 %d をしのいだ"
-const BONUS_TOWN := "町 ×100"
-const BONUS_AMMO := "弾 ×5"
-const BONUS_LINE := "%s  %d  /  %s  %d  /  +%s"
+const BONUS_LINE := "町 %d × %d  +  弾 %d × %d  =  +%s"
+# 磨きで足した文言(v0.2.0)。新しい種類が出る波の一言(番号は波)と、最初の 1 本の案内
+const WAVE_NEW := ["", "", "斜めに落ちてくる。落ちる先の列で迎える", "途中で 3 本に分かれる。分かれる前に落とす", "速いミサイルが混じる。早めに押し始める", "爆撃機が横切りながら落とす。爆撃機も落とせる"]
+const FIRST_HINT := "%s を押さえて、線が重なる高さで離す"
 const POPUP := "+%d"
 
 # S3

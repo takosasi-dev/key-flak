@@ -1,5 +1,6 @@
 # 画面の切り替え(S0〜S5)・入力の振り分け・保存・自動の一時停止を受け持つ。ゲームの決まりは持たない(INV-1)。作りは RootCall の ui/main.gd。
-# --auto(Web では ?auto=1)で S0 → タイトル → 今日の空(迎える bot)→ 結果 → もう1回 → 結果 を自動で通して終わる(ヘッドレスの smoke)。
+# --auto で S0 → タイトル → 今日の空(迎える bot)→ 結果 → もう1回 → 結果 を自動で通して終わる(ヘッドレスの smoke。Web では効かない)。
+# ?debug=1(または --debug)で window.kfState に状態を出す(読むだけ。tests/web が読む)。
 extends Node
 
 const B := preload("res://core/balance.gd")
@@ -25,6 +26,9 @@ var pause_view: Pause = null
 var settings_from := "title"
 var run := {}  # 今の回 { mode, seed, day, date }
 var auto := false
+var debug := false
+var frame_ms: Array = []  # フレームの間隔(ms。tests/web が読む)
+var _last_frame := 0
 var lat_ms: Array = []  # 離してから爆発を描くまで(NFR-2)
 var _touch_note: Label = null
 var _visibility_cb: Variant = null
@@ -36,17 +40,25 @@ func _ready() -> void:
 	stage = Control.new()
 	stage.size = Vector2(1280, 720)
 	add_child(stage)
+	# 窓の縦横比が違う時は、余りを背景色で埋めてステージを真ん中に置く(共通 §3 の 1。stretch の aspect は expand)
+	get_viewport().size_changed.connect(_center_stage)
+	_center_stage()
 	var bg := ColorRect.new()
 	bg.color = Kit.C_BG
 	stage.add_child(Kit.place(bg, -2000, -2000, 5280, 4720))
 	store = Store.new()
 	_apply_settings()
+	debug = _flag("debug")
 	auto = _flag("auto") and not OS.has_feature("web")  # 公開版では効かせない(bot の点を保存しない)
 	if auto:
 		Engine.time_scale = 4.0  # 1 フレーム 8 tick(上限)で進める
 	_watch_visibility()
 	RenderingServer.frame_post_draw.connect(_after_draw)
 	_show_gate()
+
+
+func _center_stage() -> void:
+	stage.position = ((get_viewport().get_visible_rect().size - stage.size) / 2.0).round()
 
 
 static func _flag(flag: String) -> bool:
@@ -259,7 +271,7 @@ func _show_settings(from: String) -> void:
 		pause_view.visible = false
 		var dim := ColorRect.new()
 		dim.color = Color(Kit.C_BG, 0.96)
-		s.add_child(Kit.place(dim, 0, 0, 1280, 720))
+		s.add_child(Kit.place(dim, -2000, -2000, 5280, 4720))
 		s.move_child(dim, 0)
 		stage.add_child(s)
 		current = s
@@ -348,8 +360,58 @@ static func _key(pk: int) -> InputEventKey:
 
 
 func _after_draw() -> void:
+	var now := Time.get_ticks_usec()
+	if _last_frame > 0 and frame_ms.size() < 20000:
+		frame_ms.append((now - _last_frame) / 1000.0)
+	_last_frame = now
 	if play != null and play.burst_seen_at > 0 and play.release_at > 0:
 		if lat_ms.size() < 2000:
-			lat_ms.append((Time.get_ticks_usec() - play.release_at) / 1000.0)
+			lat_ms.append((now - play.release_at) / 1000.0)
 		play.release_at = 0
 		play.burst_seen_at = 0
+	if debug and OS.has_feature("web"):
+		JavaScriptBridge.eval("window.kfState=" + JSON.stringify(JSON.stringify(state())), true)
+		if frame_ms.size() % 60 == 0:
+			JavaScriptBridge.eval("window.kfStats=" + JSON.stringify(JSON.stringify(stats())), true)
+
+
+# --- デバッグ用の窓口(読むだけ) ---
+
+func state() -> Dictionary:
+	var out := {"screen": screen, "paused": pause_view != null, "version": S.VERSION, "buttons": {}, "sfx": Sfx.played,
+		"unlocked": Sfx.unlocked, "save_failed": store.write_failed, "load_failed": store.load_failed}
+	var root: Control = pause_view if pause_view != null and pause_view.visible else current
+	if root != null:
+		for b in root.find_children("*", "Button", true, false):
+			var btn := b as Button
+			if btn.is_visible_in_tree() and not btn.disabled:
+				var c := btn.global_position - stage.global_position + btn.size / 2  # ゲームの座標(1280×720)
+				out["buttons"][String(btn.name)] = [c.x, c.y]
+	if screen == "settings" and current != null:
+		out["keys_view"] = current.keys_view
+		out["keys_held"] = current.held.keys()
+	if play != null and play.sim != null:
+		var sim := play.sim
+		var ms: Array = []
+		for m: Dictionary in sim.missiles:
+			ms.append([snappedf(m["x"], 0.1), snappedf(m["y"], 0.1), snappedf(m["vx"], 0.001), snappedf(m["vy"], 0.001), m["col"], m["kind"], m["id"]])
+		var ls: Array = []
+		for i in B.COLS:
+			ls.append([sim.ammo[i], sim.disabled[i], snappedf(Sim.aim_y(sim.aim_h[i]), 0.1) if sim.aim_h[i] >= 0 else -1.0])
+		out["play"] = {"tick": sim.tick, "wave": sim.wave, "points": sim.points, "kills": sim.kills, "towns": sim.town_count(),
+			"chain": sim.chain_now(), "max_chain": sim.max_chain, "intermission": sim.intermission > 0, "over": sim.over,
+			"missiles": ms, "bombers": sim.bombers.size(), "bursts": sim.bursts.size(), "launchers": ls, "held": play.held.keys(),
+			"pos": [play.position.x, play.position.y]}
+	return out
+
+
+func stats() -> Dictionary:
+	return {"frame": _pct(frame_ms), "lat": _pct(lat_ms)}
+
+
+static func _pct(a: Array) -> Dictionary:
+	if a.is_empty():
+		return {"n": 0}
+	var s := a.duplicate()
+	s.sort()
+	return {"n": s.size(), "p50": s[s.size() / 2], "p95": s[mini(int(s.size() * 0.95), s.size() - 1)], "max": s[-1]}

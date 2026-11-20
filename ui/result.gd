@@ -53,13 +53,13 @@ func build(mode: int, result: Dictionary, rec: Dictionary, share_text: String) -
 	box.add_theme_font_override("font", Kit.font(400))
 	box.add_theme_font_size_override("font_size", 18)
 	box.add_theme_color_override("font_readonly_color", Kit.C_TEXT)
-	add_child(Kit.place(box, 290, 404, 700, 100))
-	var copy := Kit.place(Kit.button("copy", S.B_COPY, 24), 420, 520, 200, 56)
-	var title := Kit.place(Kit.button("title", S.B_TITLE, 24), 660, 520, 200, 56)
+	add_child(Kit.place(box, 290, 398, 700, 118))  # 3 行が縦のスクロールバー無しで収まる高さ
+	var copy := Kit.place(Kit.button("copy", S.B_COPY, 24), 420, 530, 200, 56)
+	var title := Kit.place(Kit.button("title", S.B_TITLE, 24), 660, 530, 200, 56)
 	add_child(copy)
 	add_child(title)
 	_copied = Kit.label("", 18, Kit.C_DIM)
-	add_child(Kit.place(_copied, 0, 584, 1280, 28))
+	add_child(Kit.place(_copied, 0, 594, 1280, 28))
 	if not rec.get("saved", true):
 		add_child(Kit.place(Kit.label(S.SAVE_FAILED, 20, Kit.C_WARN), 0, 640, 1280, 40))
 	_retry.pressed.connect(func() -> void: retry.emit())

@@ -320,3 +320,81 @@ func test_result_shows_best_diff() -> bool:
 	ok(labels.any(func(t: String) -> bool: return t.begins_with(S.RES_TO_BEST % "600")), "最高まで −600 が出る: %s" % [labels])
 	_done(m)
 	return true
+
+
+# --- 磨きで足した演出(v0.2.0、仕様書 §14) ---
+
+func test_polish_reduce_flash_caps_white() -> bool:
+	var m := _main()
+	_to_daily(m)
+	var p: Control = m.play
+	p.reduce_flash = false
+	eq(p.flash_a(B.BURST_FLASH_A), B.BURST_FLASH_A, "点滅を弱めない時は爆発の白い芯をそのまま")
+	p.reduce_flash = true
+	for a: float in [B.BURST_FLASH_A, B.IMPACT_FLASH_A, 1.0]:
+		ok(p.flash_a(a) <= B.REDUCED_FLASH_ALPHA, "点滅を弱めると白い光は 20%% 以下(%.2f)" % a)
+	eq(p.flash_a(0.1), 0.1, "弱い光はそのまま")
+	_done(m)
+	return true
+
+
+func test_polish_kill_fx() -> bool:
+	var m := _main()
+	_to_daily(m)
+	var p: Control = m.play
+	p._heads = [[Vector2(448, 300), Vector2(448, 64), Sch.STRAIGHT]]
+	p._on_event({"type": "kill", "x": 448.0, "y": 304.0, "n": 1, "points": 25, "bomber": false})
+	eq(p._sparks.size(), 1, "落とすと火花")
+	eq(p._flashes.size(), 1, "落とした所の白い光")
+	eq(p._ghosts.size(), 1, "落としたミサイルの線を残す")
+	eq(p._popups.size(), 1, "浮かぶ点")
+	ok(not p._sparks[0]["big"], "1 本目は小さい演出")
+	eq(p.position, Vector2.ZERO, "1 本目では揺れない")
+	p._on_event({"type": "kill", "x": 900.0, "y": 140.0, "n": 1, "points": 100, "bomber": true})
+	ok(p._sparks[1]["big"], "爆撃機は派手な演出")
+	eq(p._ghosts.size(), 1, "爆撃機は線を残さない")
+	p._on_event({"type": "kill", "x": 600.0, "y": 300.0, "n": 3, "points": 75, "bomber": false})
+	ok(p._sparks[2]["big"] and p._popups[2]["big"], "組の 3 本目から派手な演出")
+	_done(m)
+	return true
+
+
+func test_polish_first_hint() -> bool:
+	var m := _main()
+	_to_daily(m)
+	var p: Control = m.play
+	eq(p.hint_col(), -1, "ミサイルが出るまでは案内しない")
+	while p.sim.missiles.is_empty():
+		p.sim.step()
+	p._refresh()
+	eq(p.hint_col(), B.TEACH_COL1, "1 本目の列(F)を案内する")
+	ok(p._hint.visible and p._hint.text == S.FIRST_HINT % "F", "案内の文: %s" % p._hint.text)
+	press(m, KEY_F)
+	frames(m, 2)
+	ok(not p._hint.visible, "押すと案内が消える")
+	release(m, KEY_F)
+	frames(m, 2)
+	eq(p.hint_col(), -1, "1 回撃った後は出さない")
+	_done(m)
+	return true
+
+
+func test_polish_wave_subtitle() -> bool:
+	var m := _main()
+	_to_daily(m)
+	var p: Control = m.play
+	for w in [2, 3, 4, 5]:
+		p._on_event({"type": "wave_start", "wave": w})
+		p._refresh()
+		ok(p._bonus.visible and p._bonus.text == S.WAVE_NEW[w] and S.WAVE_NEW[w] != "", "波 %d の一言: %s" % [w, p._bonus.text])
+	p._on_event({"type": "wave_start", "wave": 6})
+	p._refresh()
+	ok(p._banner.visible and not p._bonus.visible, "新しい種類の無い波は「波 6」だけ")
+	_done(m)
+	return true
+
+
+func test_polish_mark_above_launcher_and_town() -> bool:
+	# 落ちる先の印は、発射台(高さ 30)と町(高さ 30 まで)に隠れない高さに描く(v0.1.0 では発射台の後ろに隠れていた)
+	ok(B.MARK_ICON_Y < B.GROUND_Y - 30.0, "印の下の先 %.0f は発射台と町の上" % B.MARK_ICON_Y)
+	return true
