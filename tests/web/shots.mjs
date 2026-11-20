@@ -104,6 +104,20 @@ try {
 	await page.shot('s3_result_count');
 	await sleep(900);
 	await page.shot('s3_result');
+	// 横長の窓(余りが左右に出る): 空と地面が端で切れないか
+	await page.resize({ width: 1920, height: 940, deviceScaleFactor: 1, mobile: false });
+	await sleep(400);
+	await page.shot('s3_result_wide');
+	expect(await page.clickButton('title'), '横長の窓でもマウスで「タイトルへ」を押せる');
+	await page.waitState((s) => s.screen === 'title');
+	await page.key('ArrowDown');
+	await page.key('Enter');
+	await page.waitState((s) => s.screen === 'play' && s.play);
+	await page.waitState((s) => s.play.missiles.length > 0, 20000);
+	await page.keyDown('a');
+	await sleep(500);
+	await page.shot('s2_play_wide');
+	await page.keyUp('a');
 	console.log('    結果: ' + JSON.stringify((await page.state())));
 	console.log('    1 フレーム・離してから描くまで(ms): ' + JSON.stringify(await page.stats()));
 	const errs = page.errors();

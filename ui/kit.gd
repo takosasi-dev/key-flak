@@ -5,6 +5,7 @@ extends RefCounted
 const B := preload("res://core/balance.gd")
 
 const SANS := "res://assets/fonts/NotoSansJP-Subset.ttf"
+const EXT := 2000.0  # 空と地面を左右に延ばす幅(横長の窓の余りで切れて見えないように)
 
 const C_BG := Color("0B1020")
 const C_BG2 := Color("141B2D")
@@ -99,18 +100,18 @@ static func col_x(i: int) -> float:
 	return B.COL_X0 + B.COL_W * i
 
 
-# 空の 2 色の帯(上から下へ)。
+# 空の 2 色の帯(上から下へ)。左右は窓の余りまで延ばす。
 static func draw_sky(ci: CanvasItem, alpha: float = 1.0) -> void:
 	var top := Color(C_BG, alpha)
 	var bottom := Color(C_BG2, alpha)
-	ci.draw_polygon(PackedVector2Array([Vector2(0, B.SKY_TOP), Vector2(B.SCREEN_W, B.SKY_TOP), Vector2(B.SCREEN_W, B.GROUND_Y), Vector2(0, B.GROUND_Y)]),
+	ci.draw_polygon(PackedVector2Array([Vector2(-EXT, B.SKY_TOP), Vector2(B.SCREEN_W + EXT, B.SKY_TOP), Vector2(B.SCREEN_W + EXT, B.GROUND_Y), Vector2(-EXT, B.GROUND_Y)]),
 		PackedColorArray([top, top, bottom, bottom]))
 
 
 # 地面の帯と線。
 static func draw_ground(ci: CanvasItem, alpha: float = 1.0) -> void:
-	ci.draw_rect(Rect2(0, B.GROUND_Y, B.SCREEN_W, 8), Color(C_GROUND, alpha))
-	ci.draw_line(Vector2(0, B.GROUND_Y), Vector2(B.SCREEN_W, B.GROUND_Y), Color(C_TOWN, 0.5 * alpha), 2.0)
+	ci.draw_rect(Rect2(-EXT, B.GROUND_Y, B.SCREEN_W + 2 * EXT, 8), Color(C_GROUND, alpha))
+	ci.draw_line(Vector2(-EXT, B.GROUND_Y), Vector2(B.SCREEN_W + EXT, B.GROUND_Y), Color(C_TOWN, 0.5 * alpha), 2.0)
 
 
 # 町(四角の集まり、幅 96)。ruin は 0(無傷)〜1(崩れた)。
