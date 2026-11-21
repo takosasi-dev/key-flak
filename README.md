@@ -4,11 +4,13 @@
 
 **▶ 遊ぶ: https://takosasi-dev.github.io/key-flak/** (デスクトップの Chrome・Edge・Firefox。キーボードで遊びます。インストール不要)
 
-> v0.2.0。人に遊んでもらう確かめはまだです。照準の昇る速さ・爆発の大きさ・ミサイルの速さは仕様の初期値のままで、人が遊んで決めた値ではありません。
+> v0.3.0。人に遊んでもらう確かめはまだです。照準の昇る速さ・爆発の大きさ・ミサイルの速さは仕様の初期値のままで、人が遊んで決めた値ではありません。
 
-| 押さえている間、照準が昇る | 離した高さで爆発して落とす | 結果 |
+| タイトル | 押さえて昇る照準・離した高さで落とす | 結果 |
 |---|---|---|
-| ![照準が昇る](docs/aim.png) | ![落とした瞬間](docs/hit.png) | ![結果](docs/result.png) |
+| ![タイトル](docs/title.png) | ![遊びの画面](docs/play.png) | ![結果](docs/result.png) |
+
+見た目は「夜の対空監視所」: レーダーのスコープの硝子に、燐光の琥珀の目盛りと照準の角。題字と数字は型紙の字(Big Shoulders Stencil)です。「点滅を弱める」を入れると、画面の切り替わりやレーダーの動きも止まります。
 
 ## 遊び方
 
@@ -60,10 +62,13 @@ python tools/gd.py test
 python tools/gd.py export
 python tools/gd.py smoke 300000 --auto
 python tools/gd.py run res://tools/perf.gd   # ミサイル 60・爆発 40 の負荷を測る(CPU 側だけ)
+python tools/gd.py run res://tools/make_theme.gd   # 見た目の型 ui/theme.tres を作り直す(色を変えた時)
 
 # ブラウザでの確かめ(Node.js 22 以上と Chrome。窓を出さない・音を消す・使い捨てのプロフィール)
 node tests/web/check.mjs      # S0 → 結果 → もう1回・同時押さえ・一時停止・保存・コピー・3 分間の通信 0 件
-node tests/web/shots.mjs      # 全部の画面を build/web_shots/ に撮る(--docs で README の 3 枚を docs/ に)
+node tests/web/shots.mjs      # 遊びの場面を build/web_shots/ に撮る(--docs で README の 3 枚を docs/ に)
+node tests/web/look.mjs after # 全部の画面を 5 つの窓の大きさで撮る
+node tests/web/boot.mjs 3     # 起動の秒数と、キーから遊びの画面までの時間
 
 # 字体を画面の文字に絞る・効果音を作る(Python)
 pip install fonttools
@@ -75,7 +80,7 @@ python tools/gen_sfx.py
 
 ## 開発状況
 
-- v0.2.0。テストはヘッドレスの Godot で通っています(72 件)。
+- v0.3.0(UI の作り直し)。テストはヘッドレスの Godot で通っています(82 件)。
 - 窓を出さない Chrome(使い捨てのプロフィール・消音)で、起動とひと通りの流れを確かめました: S0 → タイトル → 今日の空 → 一時停止 → 結果 → もう1回、本物のキーのイベントで押さえて離すと爆発する・3 キーと 10 キーの同時押さえ・タブが裏で一時停止・保存(ParryDuel の保存を消さない)・コピー・読み込みの後 3 分間の通信 0 件・コンソールのエラー 0 件。
 - まだ確かめていないこと: 人が遊ぶこと、本物のキーボードでの同時押さえ、Edge・Firefox、音を耳で聞くこと。
 - ミサイル 60・爆発 40・爆撃機 3・照準 10 の負荷で、1 フレームの CPU 時間の 95% 値は約 10 ms(ヘッドレスの測定。画面に描く GPU の時間は入っていない)。
@@ -83,4 +88,4 @@ python tools/gen_sfx.py
 
 ## ライセンス
 
-MIT(`LICENSE`)。同梱の字体は SIL Open Font License 1.1 です(`THIRD-PARTY-NOTICES.md`)。
+MIT(`LICENSE`)。同梱の字体 2 つ(Noto Sans JP・Big Shoulders Stencil)は SIL Open Font License 1.1 です(`THIRD-PARTY-NOTICES.md`、原文は `assets/fonts/OFL_*.txt`)。

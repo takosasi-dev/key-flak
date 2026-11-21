@@ -143,3 +143,14 @@ const POPUP_RISE := 34.0  # 浮かぶ点が昇る高さ
 const WAVE_NEW_MS := 2600  # 新しい種類が出る波の始めに、一言を出す時間
 const OVER_DIM := 0.5  # 終わりの 600 ms で空を暗くする
 const FX_CAP := 24  # 同時に描く火花・白い光・浮かぶ点の上限(それぞれ)
+
+# UI の見た目(v0.3.0。画面設計書 §10)。ms と px。ゲームの決まりには効かない
+const WIPE_MS := 280  # 画面の切り替わり: 掃く線が左から右へ走る時間
+const ENTER_MS := 260  # 新しい画面が薄い → 濃いになる時間
+const POP_IN_MS := 150  # 一時停止の板が出る時間
+const LOCK_MS := 120  # 選んだボタンに照準の角が寄る時間
+const SWEEP_PERIOD_MS := 6000  # タイトルのレーダーの掃く線の 1 周
+const BLIP_MS := 1800  # 掃く線が通った後、光の点が消えるまで
+const LOGO_MS := 900  # 題字の入りの動き(掃く線が字を出す → 照準が寄る → 炸裂)
+const HUD_H := 56.0  # 上の帯の高さ(空は SKY_TOP から)
+const STAMP_MS := 260  # 新しい記録の炸裂の印

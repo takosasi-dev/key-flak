@@ -3,7 +3,7 @@
 extends RefCounted
 
 const NAME := "KeyFlak"
-const VERSION := "v0.2.0"
+const VERSION := "v0.3.0"
 const URL := "https://takosasi-dev.github.io/key-flak/"
 
 # 発射台のキーの印字(§9.2。左から 0〜9)
@@ -69,9 +69,25 @@ const OFF := "切"
 const B_KEYS := "キーの確かめ"
 const B_BACK := "戻る"
 const KEYS_HELP := "押されているキーが光る。Esc で戻る"
+const KEYS_HELD := "同時に押している数"
+const KEYS_LAST := "最後に届いたキー"
 const KEY_DETAIL := "physical_keycode %d (%s) / key_label %s / unicode %d / pressed %s / echo %s / ctrl %s alt %s meta %s shift %s"
+# キーの確かめの枠に出す名前と値の組(1 組 1 行)
+const KEY_ROWS := [["physical_keycode", "%d (%s)"], ["key_label / unicode", "%s / %d"], ["pressed / echo", "%s / %s"], ["ctrl / alt / meta / shift", "%s / %s / %s / %s"]]
 
 # S5
 const PAUSE := "一時停止"
 const B_RESUME := "続ける"
 const B_RESTART := "やり直す"
+
+# UI の作り直しで足した文言(v0.3.0。画面設計書 §6・§10)。画面の下のキーの案内と、数字に添える短い名前
+const HINT_SELECT := "選ぶ"
+const HINT_OK := "決める"
+const HINT_CHANGE := "変える"
+const HUD_WAVE := "波"
+const HUD_CHAIN := "連鎖"
+const UNIT_POINTS := "点"
+const RES_WAVE_L := "届いた波"
+const RES_KILLS_L := "落とした数"
+const RES_CHAIN_L := "最大連鎖"
+const NEW_BEST := "新しい記録"

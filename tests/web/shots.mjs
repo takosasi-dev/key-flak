@@ -1,4 +1,4 @@
-// 全部の画面を撮る(build/web_shots/)。--docs を付けると README 用の 3 枚(照準が昇る・落とした瞬間・結果)を docs/ に写す。
+// 遊びの場面を撮る(build/web_shots/)。--docs を付けると README 用の遊びの画面(落とした瞬間)を docs/play.png に写す。
 //     node tests/web/shots.mjs [--docs]
 //     KF_URL=https://…/key-flak/ node tests/web/shots.mjs   公開した物を撮る
 // S0 → タイトル → 設定 → キーの確かめ(10 キー同時)→ 今日の空(照準が昇る・当たる瞬間・連鎖・着弾・波の間・新しい種類)→ 一時停止 → 結果 の順。
@@ -125,7 +125,7 @@ try {
 	if (docs) {
 		mkdirSync(path.join(ROOT, 'docs'), { recursive: true });
 		const hit = taken.has('s2_chain') ? 's2_chain' : taken.has('s2_chain2') ? 's2_chain2' : 's2_hit_2';
-		for (const [from, to] of [['s2_aim_3', 'aim'], [hit, 'hit'], ['s3_result', 'result']]) copyFileSync(path.join(OUT, `${from}.png`), path.join(ROOT, 'docs', `${to}.png`));
+		copyFileSync(path.join(OUT, `${hit}.png`), path.join(ROOT, 'docs', 'play.png')); // タイトルと結果は look.mjs --docs
 	}
 } finally {
 	await page.close();

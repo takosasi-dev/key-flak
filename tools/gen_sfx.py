@@ -1,4 +1,4 @@
-"""効果音 10 個(仕様書 §9.9)を合成して assets/sfx/<名前>.wav に書く。標準ライブラリだけ。
+"""効果音 11 個(v0.3.0 でメニューの決定を足した)(仕様書 §9.9)を合成して assets/sfx/<名前>.wav に書く。標準ライブラリだけ。
 雑音は決まった式の擬似乱数で作る(何度回しても同じバイト列)。16bit PCM・モノラル・22050 Hz。合計 400 KB 以下(NFR-7)。
 作りは RootCall の tools/gen_sfx.py。
 
@@ -99,6 +99,10 @@ def main():
     b = []
     tone(b, 0, 0.04, 1200, 1400, decay=30)  # メニューの選択
     write("select", b, 0.35)
+    b = []
+    tone(b, 0, 0.05, 900, decay=25)
+    tone(b, 0.05, 0.09, 1350, decay=22)  # メニューの決定(v0.3.0): 2 音で上がる
+    write("confirm", b, 0.35)
     total = sum(p.stat().st_size for p in OUT.glob("*.wav"))
     print(f"{len(list(OUT.glob('*.wav')))} 個、合計 {total:,} バイト")
 

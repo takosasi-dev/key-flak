@@ -70,7 +70,7 @@ try {
 		const c1 = await page.clipboard();
 		expect(c1.startsWith('KeyFlak '), `コピーのボタン: ${JSON.stringify(c1).slice(0, 90)}`);
 		await page.evaluate(`navigator.clipboard.writeText('').catch(() => {})`);
-		await page.click(...(await page.gameCss(500, 450))); // 共有の枠(y 398〜516)
+		await page.click(...(await page.gameCss(500, 480))); // 共有の枠(y 436〜554)
 		await sleep(200);
 		await page.keyMod('a', 2);
 		await page.keyMod('c', 2);

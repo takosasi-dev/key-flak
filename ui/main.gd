@@ -1,6 +1,8 @@
 # 画面の切り替え(S0〜S5)・入力の振り分け・保存・自動の一時停止を受け持つ。ゲームの決まりは持たない(INV-1)。作りは RootCall の ui/main.gd。
 # --auto で S0 → タイトル → 今日の空(迎える bot)→ 結果 → もう1回 → 結果 を自動で通して終わる(ヘッドレスの smoke。Web では効かない)。
 # ?debug=1(または --debug)で window.kfState に状態を出す(読むだけ。tests/web が読む)。
+# v0.3.0: 後ろの夜の地とレーダー(ui/backdrop.gd)・画面の切り替わり(掃く線 ui/wipe.gd と、薄い → 濃いの入り)を受け持つ。
+# 切り替わりは見た目だけで、動いている間のキーもそのまま新しい画面に渡す(飲まない)。もう1回・やり直すは動きを付けない。
 extends Node
 
 const B := preload("res://core/balance.gd")
@@ -16,6 +18,9 @@ const Title := preload("res://ui/title.gd")
 const Result := preload("res://ui/result.gd")
 const Settings := preload("res://ui/settings.gd")
 const Pause := preload("res://ui/pause.gd")
+const Backdrop := preload("res://ui/backdrop.gd")
+const Wipe := preload("res://ui/wipe.gd")
+const Logo := preload("res://ui/logo.gd")
 
 var stage: Control
 var store: Store
@@ -34,18 +39,23 @@ var _touch_note: Label = null
 var _visibility_cb: Variant = null
 var _auto_results := 0
 var _auto_keys := 0
+var backdrop: Backdrop
+var wipe: Wipe
+var view := Rect2(0, 0, 1280, 720)  # 舞台の座標で、窓に見えている範囲
+var entering: Array = []  # [画面, 始めた時刻(ms), 長さ(ms), 上がる幅(px)]。_process が濃さと位置を進める
 
 
 func _ready() -> void:
 	stage = Control.new()
 	stage.size = Vector2(1280, 720)
 	add_child(stage)
-	# 窓の縦横比が違う時は、余りを背景色で埋めてステージを真ん中に置く(共通 §3 の 1。stretch の aspect は expand)
+	backdrop = Backdrop.new()
+	stage.add_child(Kit.place(backdrop, 0, 0, 1280, 720))
+	wipe = Wipe.new()
+	stage.add_child(Kit.place(wipe, 0, 0, 1280, 720))
+	# 窓の縦横比が違う時は、余りを背景で埋めてステージを真ん中に置く(共通 §3 の 1。stretch の aspect は expand)
 	get_viewport().size_changed.connect(_center_stage)
 	_center_stage()
-	var bg := ColorRect.new()
-	bg.color = Kit.C_BG
-	stage.add_child(Kit.place(bg, -2000, -2000, 5280, 4720))
 	store = Store.new()
 	_apply_settings()
 	debug = _flag("debug")
@@ -58,7 +68,78 @@ func _ready() -> void:
 
 
 func _center_stage() -> void:
-	stage.position = ((get_viewport().get_visible_rect().size - stage.size) / 2.0).round()
+	var vs := get_viewport().get_visible_rect().size
+	stage.position = ((vs - stage.size) / 2.0).round()
+	view = Rect2(-stage.position, vs)
+	backdrop.view = view
+	wipe.view = view
+	backdrop.queue_redraw()
+	for c in stage.get_children():
+		if c.has_method("set_view"):
+			c.set_view(view)
+
+
+# 点滅を弱める 入は、画面の切り替わり・題字・レーダー・はね などの動きも止める(動きを減らす設定を兼ねる)。
+func reduce_motion() -> bool:
+	return bool(store.settings()["reduce_flash"])
+
+
+# 新しい画面を舞台に置き、current にする。motion: "wipe"(掃く線を走らせ、薄く → 濃く)/ "fade"(薄く → 濃くだけ)/ "none"。
+func _show(node: Control, motion: String) -> void:
+	stage.add_child(node)
+	stage.move_child(wipe, -1)
+	if node.has_method("set_view"):
+		node.set_view(view)
+	current = node
+	if motion != "none" and not reduce_motion():
+		_animate_in(node, B.ENTER_MS, 0.0)
+		if motion == "wipe":
+			wipe.run()
+
+
+# 重ねる板(一時停止・一時停止から開いた設定)。少し上がりながら出る。
+func _overlay(node: Control) -> void:
+	stage.add_child(node)
+	stage.move_child(wipe, -1)
+	if node.has_method("set_view"):
+		node.set_view(view)
+	if not reduce_motion():
+		_animate_in(node, B.POP_IN_MS, 10.0)
+
+
+func _animate_in(node: Control, ms: int, rise: float) -> void:
+	node.modulate.a = 0.0
+	entering.append([node, Time.get_ticks_msec(), ms, rise])
+
+
+# 入りの動きの濃さ(0 → 1)。時刻だけで決まる。
+static func enter_alpha(since_ms: int, ms: int) -> float:
+	return Kit.ease_out(float(since_ms) / ms)
+
+
+func _step_entering() -> void:
+	var now := Time.get_ticks_msec()
+	var keep: Array = []
+	for e: Array in entering:
+		var node: Variant = e[0]
+		if not is_instance_valid(node) or not (node as Control).is_inside_tree():
+			continue
+		var c := node as Control
+		var k := enter_alpha(now - int(e[1]), int(e[2]))
+		c.modulate.a = k
+		if c != play:  # play は揺れで自分の位置を毎フレーム決める
+			c.position.y = float(e[3]) * (1.0 - k)
+		if k < 1.0:
+			keep.append(e)
+	entering = keep
+
+
+func _set_screen(s: String) -> void:
+	screen = s
+	backdrop.radar = s in ["gate", "title", "settings", "result"]
+	backdrop.sweep = s != "result"  # 結果は目盛りだけ(掃く光が点と札の上を横切らない)
+	backdrop.animate = backdrop.radar and not reduce_motion()
+	backdrop.queue_redraw()
 
 
 static func _flag(flag: String) -> bool:
@@ -70,6 +151,7 @@ static func _flag(flag: String) -> bool:
 
 func _apply_settings() -> void:
 	Sfx.set_volume(int(store.settings()["volume"]))
+	Kit.still = reduce_motion()
 
 
 func _clear() -> void:
@@ -77,28 +159,31 @@ func _clear() -> void:
 		pause_view.queue_free()
 		pause_view = null
 	for c in stage.get_children():
-		if c is ColorRect and c.get_index() == 0:
+		if c == backdrop or c == wipe:
 			continue
+		stage.remove_child(c)  # 出ていく画面に押しを飲ませない(すぐ木から外す)
 		c.queue_free()
+	entering.clear()
 	current = null
 	play = null
+	_settings_overlay = null
 
 
 # --- S0 始める ---
 
 func _show_gate() -> void:
 	_clear()
-	screen = "gate"
 	var g := Control.new()
 	g.size = Vector2(1280, 720)
-	g.add_child(Kit.place(Kit.label(S.NAME, 72, Kit.C_TEXT, 800), 0, 220, 1280, 100))
-	g.add_child(Kit.place(Kit.label(S.S0_START, 28, Kit.C_TEXT, 500), 0, 360, 1280, 44))
-	g.add_child(Kit.place(Kit.label(S.S0_KEYBOARD, 18, Kit.C_DIM), 0, 410, 1280, 30))
+	g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	g.add_child(Kit.place(Logo.new(140, reduce_motion()), 0, 170, 1280, 190))
+	g.add_child(Kit.place(Kit.label(S.S0_START, 30, Kit.C_TEXT, 700), 0, 410, 1280, 48))
+	g.add_child(Kit.place(Kit.label(S.S0_KEYBOARD, 20, Kit.C_DIM, 500), 0, 462, 1280, 32))
 	_touch_note = Kit.label(S.TOUCH, 22, Kit.C_WARN, 700)
 	_touch_note.visible = false
-	g.add_child(Kit.place(_touch_note, 0, 470, 1280, 40))
-	stage.add_child(g)
-	current = g
+	g.add_child(Kit.place(_touch_note, 0, 520, 1280, 40))
+	_show(g, "fade")
+	_set_screen("gate")
 
 
 func _input(event: InputEvent) -> void:
@@ -131,13 +216,12 @@ func _input(event: InputEvent) -> void:
 
 func _show_title() -> void:
 	_clear()
-	screen = "title"
 	var d := _today()
 	var t := Title.new()
-	t.build(store, d["day"], d["date"])
+	t.build(store, d["day"], d["date"], reduce_motion())
 	t.chosen.connect(_on_title)
-	stage.add_child(t)
-	current = t
+	_show(t, "wipe")
+	_set_screen("title")
 
 
 func _on_title(what: String) -> void:
@@ -146,10 +230,10 @@ func _on_title(what: String) -> void:
 		"settings":
 			_show_settings("title")
 		"daily":
-			_start({"mode": Sim.MODE_DAILY, "seed": Day.day_seed(d["day"]), "day": d["day"], "date": d["date"]})
+			_start({"mode": Sim.MODE_DAILY, "seed": Day.day_seed(d["day"]), "day": d["day"], "date": d["date"]}, "wipe")
 		"practice":
 			var s := Time.get_ticks_usec() & 0xFFFFFFFF
-			_start({"mode": Sim.MODE_PRACTICE, "seed": s if s != 0 else 1, "day": d["day"], "date": d["date"]})
+			_start({"mode": Sim.MODE_PRACTICE, "seed": s if s != 0 else 1, "day": d["day"], "date": d["date"]}, "wipe")
 
 
 # 端末の今日の日付。始めた時の日付で空を決める(E-15)。
@@ -163,21 +247,21 @@ func _today() -> Dictionary:
 
 # --- S2 プレイ ---
 
-func _start(r: Dictionary) -> void:
+# motion: タイトルからは "wipe"。もう1回・やり直すは "none"(押してすぐ遊べるように動きを付けない)。
+func _start(r: Dictionary, motion: String = "none") -> void:
 	_clear()
 	run = r
-	screen = "play"
 	play = Play.new()
 	var st: Dictionary = store.settings()
 	play.shake_on = st["shake"]
 	play.reduce_flash = st["reduce_flash"]
-	stage.add_child(play)
+	_show(play, motion)
 	play.start(int(r["mode"]), int(r["seed"]))
 	if auto:
 		play.bot = Bots.new(Bots.INTERCEPT)
 	play.finished.connect(_on_finished)
 	play.pause_requested.connect(_pause)
-	current = play
+	_set_screen("play")
 
 
 # もう1回・やり直す。今日の空は同じ種、練習は毎回ちがう空(種を引き直す)。
@@ -196,12 +280,13 @@ func _pause() -> void:
 	pause_view = Pause.new()
 	pause_view.build()
 	pause_view.picked.connect(_on_pause)
-	stage.add_child(pause_view)
+	_overlay(pause_view)
 
 
 func _on_pause(what: String) -> void:
 	match what:
 		"resume":
+			stage.remove_child(pause_view)  # 消える途中の板に押しを飲ませない
 			pause_view.queue_free()
 			pause_view = null
 			play.paused = false  # 押した tick から再開(待ち時間なし)
@@ -244,13 +329,12 @@ func _on_finished(result: Dictionary) -> void:
 	var rec := store.record(int(r["mode"]), int(r["day"]), result)
 	var text := Share.make(r["date"], int(r["mode"]), rec["first_today"], result)
 	_clear()
-	screen = "result"
 	var v := Result.new()
-	v.build(int(r["mode"]), result, rec, text)
+	v.build(int(r["mode"]), result, rec, text, reduce_motion())
 	v.retry.connect(_again)  # FR-18: 同じ入口
 	v.to_title.connect(_show_title)
-	stage.add_child(v)
-	current = v
+	_show(v, "wipe")
+	_set_screen("result")
 	if auto:
 		_auto_results += 1
 		print("SMOKE result %d: %s" % [_auto_results, JSON.stringify(result)])
@@ -267,22 +351,29 @@ func _show_settings(from: String) -> void:
 	var s := Settings.new()
 	s.build(store)
 	s.back.connect(_settings_back.bind(s))
+	s.changed.connect(_settings_changed)
 	if from == "pause":
 		pause_view.visible = false
 		var dim := ColorRect.new()
 		dim.color = Color(Kit.C_BG, 0.96)
 		s.add_child(Kit.place(dim, -2000, -2000, 5280, 4720))
 		s.move_child(dim, 0)
-		stage.add_child(s)
+		_overlay(s)
 		current = s
 		screen = "settings"
 		pause_view.process_mode = Node.PROCESS_MODE_DISABLED
 		_settings_overlay = s
 	else:
 		_clear()
-		screen = "settings"
-		stage.add_child(s)
-		current = s
+		_show(s, "wipe")
+		_set_screen("settings")
+
+
+# 値を変えたらすぐ当てる(音量・動きを減らす設定。レーダーの掃く線もその場で止める)。
+func _settings_changed() -> void:
+	_apply_settings()
+	backdrop.animate = backdrop.radar and not reduce_motion()
+	backdrop.queue_redraw()
 
 
 func _settings_back(s: Control) -> void:
@@ -291,6 +382,7 @@ func _settings_back(s: Control) -> void:
 		var st: Dictionary = store.settings()
 		play.shake_on = st["shake"]
 		play.reduce_flash = st["reduce_flash"]
+		stage.remove_child(s)
 		s.queue_free()
 		_settings_overlay = null
 		pause_view.visible = true
@@ -304,6 +396,8 @@ func _settings_back(s: Control) -> void:
 # --- 自動の確かめ(smoke)と測定 ---
 
 func _process(_delta: float) -> void:
+	if not entering.is_empty():
+		_step_entering()
 	if not auto:
 		return
 	match screen:
@@ -378,7 +472,7 @@ func _after_draw() -> void:
 # --- デバッグ用の窓口(読むだけ) ---
 
 func state() -> Dictionary:
-	var out := {"screen": screen, "paused": pause_view != null, "version": S.VERSION, "buttons": {}, "sfx": Sfx.played,
+	var out := {"screen": screen, "paused": pause_view != null, "version": S.VERSION, "buttons": {}, "sfx": Sfx.played, "still": Kit.still,
 		"unlocked": Sfx.unlocked, "save_failed": store.write_failed, "load_failed": store.load_failed}
 	var root: Control = pause_view if pause_view != null and pause_view.visible else current
 	if root != null:
@@ -401,7 +495,7 @@ func state() -> Dictionary:
 		out["play"] = {"tick": sim.tick, "wave": sim.wave, "points": sim.points, "kills": sim.kills, "towns": sim.town_count(),
 			"chain": sim.chain_now(), "max_chain": sim.max_chain, "intermission": sim.intermission > 0, "over": sim.over,
 			"missiles": ms, "bombers": sim.bombers.size(), "bursts": sim.bursts.size(), "launchers": ls, "held": play.held.keys(),
-			"pos": [play.position.x, play.position.y]}
+			"pos": [play.position.x, play.position.y], "marks": play._snap.get("impact_marks", []).size()}
 	return out
 
 

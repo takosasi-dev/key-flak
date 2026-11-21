@@ -1,6 +1,8 @@
 # S2 プレイ(画面設計書 §3)。押されているキーの組を持ち、押す・離すを sim に渡し、たまった時間ぶん進める(1 フレーム 8 tick まで)。
 # events で演出(§9.9 と、磨きで足した §14 の物)と音を出し、snapshot から空・発射台・町を描く。ゲームの決まりは持たない(INV-1)。
 # 押されているキーの組は ui が持つ(共通 §3 の 5)。フォーカスが外れたら空にし、sim へ「離す」は送らない。
+# v0.3.0(画面設計書 §10): 上の帯(硝子の板と目盛り。点を一番大きく、表示用の字体で)・空の両端の高さの物差し・キーの札。
+# 飾りは全部この _draw の中で、落ちる先の印より前に描く(子の Control は印の上に重なるので、空の下の方には置かない)。
 extends Control
 
 signal finished(result: Dictionary)
@@ -13,6 +15,9 @@ const Sch := preload("res://core/schedule.gd")
 const Score := preload("res://core/score.gd")
 const Kit := preload("res://ui/kit.gd")
 const Keymap := preload("res://ui/keymap.gd")
+
+const POINTS_PX := 46  # 上の帯の点の大きさ(型紙の字は細いので、ゴシックの 40 より大きく)
+const HINT_Y := 66.0  # 最初の案内の板の上(上の帯のすぐ下)
 
 var sim: Sim = null
 var mode := 0
@@ -53,33 +58,68 @@ var _bump_big := false
 var _aim_voice := {}
 var _ime_until := 0
 var _proc_us := 0
+var _unit: Label
+var _wave_l: Label
+var hint_rect := Rect2()  # 最初の案内の板(上の帯のすぐ下、案内する列の横)
+var view := Rect2(0, 0, 1280, 720)  # 窓に見えている範囲(main が入れる。上の帯を横いっぱいに描く)
 
 
 func _ready() -> void:
 	size = Vector2(1280, 720)
-	_esc = Kit.place(Kit.button("Esc", S.ESC, 20), 24, 12, 72, 40)
+	_esc = Kit.place(Kit.button("Esc", S.ESC, 18), 20, 10, 64, 36)
 	_esc.pressed.connect(func() -> void: pause_requested.emit())
 	add_child(_esc)
-	for k: String in ["wave", "points", "chain"]:
-		var l := Kit.label("", 26, Kit.C_TEXT, 700)
-		add_child(l)
-		_bar[k] = l
+	for st: String in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var sb := _esc.get_theme_stylebox(st).duplicate() as StyleBox
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		sb.content_margin_top = 2
+		sb.content_margin_bottom = 2
+		_esc.add_theme_stylebox_override(st, sb)  # 上の帯に収まる小さな札
+	_esc.size = Vector2(64, 36)  # 余白を詰めた後に大きさを戻す(先に広がった大きさは縮まない)
+	# 上の帯: 左に波、真ん中に点(一番大きい)、右に連鎖
+	_wave_l = Kit.label(S.HUD_WAVE, 18, Kit.C_DIM, 700)
+	_wave_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	add_child(Kit.place(_wave_l, 100, 0, 300, B.HUD_H))
+	_bar["wave"] = Kit.label("", 30, Kit.C_TEXT, 800)
 	_bar["wave"].horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	Kit.place(_bar["wave"], 124, 8, 400, 48)
-	Kit.place(_bar["points"], 440, 8, 400, 48)
-	_bar["points"].pivot_offset = Vector2(200, 24)
+	add_child(Kit.place(_bar["wave"], 126, 0, 120, B.HUD_H))
+	_bar["points"] = Kit.num_label("", POINTS_PX)  # 結果と同じ型紙の字(0 は割れ目の無い形。tools/subset_font.py)
+	add_child(Kit.place(_bar["points"], 440, 0, 400, B.HUD_H))
+	_bar["points"].pivot_offset = Vector2(200, B.HUD_H / 2)
+	_unit = Kit.label(S.UNIT_POINTS, 18, Kit.C_DIM, 700)
+	_unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	add_child(Kit.place(_unit, 640, 6, 40, B.HUD_H - 6))
+	_bar["chain_l"] = Kit.label(S.HUD_CHAIN, 18, Kit.C_DIM, 700)
+	_bar["chain_l"].horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(Kit.place(_bar["chain_l"], 1000, 0, 200, B.HUD_H))
+	_bar["chain"] = Kit.label("", 30, Kit.C_TEXT, 800)
 	_bar["chain"].horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	Kit.place(_bar["chain"], 856, 8, 400, 48)
-	_banner = Kit.label("", 48, Kit.C_TEXT, 800)
+	add_child(Kit.place(_bar["chain"], 1196, 0, 64, B.HUD_H))
+	# 空の真ん中の大きな字(縁取りでミサイルの線の上でも読める)
+	_banner = Kit.label("", 56, Kit.C_TEXT, 800)  # 太字のゴシック(型紙の字の 1 は I に見える)。両側に目盛り
+	_outline(_banner, 10)
 	add_child(Kit.place(_banner, 0, 260, 1280, 80))
 	_bonus = Kit.label("", 26, Kit.C_TEXT, 500)
+	_outline(_bonus, 8)
 	add_child(Kit.place(_bonus, 0, 340, 1280, 44))
 	_ime = Kit.label(S.IME, 22, Kit.C_WARN, 700)
+	_outline(_ime, 8)
 	_ime.visible = false
 	add_child(Kit.place(_ime, 0, 400, 1280, 40))
-	_hint = Kit.label("", 24, Kit.C_AIM, 700)
+	# 最初の案内: 上の帯のすぐ下、案内する列の横に、硝子の板(_draw)とクリームの字。ミサイルは板の上に描く(隠さない)
+	_hint = Kit.label("", 22, Kit.C_TEXT, 700)
 	_hint.visible = false
-	add_child(Kit.place(_hint, 0, 500, 640, 40))
+	add_child(Kit.place(_hint, 0, HINT_Y, 1280, 38))
+
+
+static func _outline(l: Label, px: int) -> void:
+	l.add_theme_constant_override("outline_size", px)
+	l.add_theme_color_override("font_outline_color", Kit.C_BG)
+
+
+func set_view(v: Rect2) -> void:
+	view = v
 
 
 func start(p_mode: int, p_seed: int) -> void:
@@ -263,14 +303,20 @@ func _refresh() -> void:
 	_heads.clear()
 	for m: Dictionary in _snap["missiles"]:
 		_heads.append([Vector2(m["x"], m["y"]), Vector2(m["sx"], m["sy"]), m["kind"]])
-	_bar["wave"].text = S.WAVE_CLEAR % int(_clear["wave"]) if not _clear.is_empty() else S.BAR_WAVE % int(_snap["wave"])
-	_bar["points"].text = S.BAR_POINTS % Score.comma(int(_snap["points"]))
+	_bar["wave"].text = str(int(_snap["wave"]))
+	_bar["wave"].visible = _clear.is_empty()
+	_wave_l.text = S.HUD_WAVE if _clear.is_empty() else S.WAVE_CLEAR % int(_clear["wave"])
+	var pts := Score.comma(int(_snap["points"]))
+	if _bar["points"].text != pts:
+		_bar["points"].text = pts
+		_unit.position.x = 640.0 + Kit.num_font().get_string_size(pts, HORIZONTAL_ALIGNMENT_LEFT, -1, POINTS_PX).x / 2.0 + 6.0
 	var bt := float(now - _bump_at) / B.BUMP_MS
 	var k := 1.0 + ((B.BUMP_SCALE_BIG if _bump_big else B.BUMP_SCALE) - 1.0) * (1.0 - bt) if bt < 1.0 else 1.0
 	_bar["points"].scale = Vector2(k, k)
 	_bar["points"].add_theme_color_override("font_color", Kit.C_CHAIN if _bump_big and bt < 1.0 else Kit.C_TEXT)
 	var chain: int = _snap["chain"]
-	_bar["chain"].text = S.BAR_CHAIN % chain if chain >= 2 else ""
+	_bar["chain"].text = str(chain) if chain >= 2 else ""
+	_bar["chain_l"].visible = chain >= 2
 	_bar["chain"].add_theme_color_override("font_color", Kit.C_CHAIN if chain >= 3 else Kit.C_TEXT)
 	if not _clear.is_empty():
 		# 波の間: 中央に「波 n をしのいだ」とボーナスの数え上げ(1.5 秒)
@@ -292,7 +338,13 @@ func _update_hint() -> void:
 	_hint.visible = col >= 0
 	if col >= 0:
 		_hint.text = S.FIRST_HINT % S.KEYS[col]
-		_hint.position.x = clampf(Kit.col_x(col) - _hint.size.x / 2, 8, B.SCREEN_W - _hint.size.x - 8)
+		# 板は案内する列の横へ逃がす(1 本目のミサイルはその列を落ちてくるので、板と重ねない)
+		var w := Kit.font(700).get_string_size(_hint.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + 56.0
+		var cx := Kit.col_x(col)
+		var x := cx + 28.0 if cx + 28.0 + w <= B.SCREEN_W - 8.0 else cx - 28.0 - w
+		hint_rect = Rect2(x, HINT_Y, w, _hint.size.y)
+		_hint.position.x = x + 4.0
+		_hint.size.x = w - 4.0
 
 
 func hint_col() -> int:
@@ -316,6 +368,13 @@ func _draw() -> void:
 	draws += 1
 	var now := Time.get_ticks_msec()
 	Kit.draw_sky(self)
+	for r: float in [150.0, 300.0, 450.0, 600.0]:
+		draw_arc(Vector2(640, B.GROUND_Y), r, PI, TAU, 96, Color(Kit.C_TOWN, 0.06), 1.5, true)
+	# 空の両端の高さの物差し(タイトルのレーダーと同じ目盛り。ミサイルより弱い色で、列の外に置く)
+	Kit.draw_vscale(self, 2.0, B.SKY_TOP + 8.0, B.GROUND_Y - 8.0, Color(Kit.C_TOWN, 0.22), false)
+	Kit.draw_vscale(self, B.SCREEN_W - 2.0, B.SKY_TOP + 8.0, B.GROUND_Y - 8.0, Color(Kit.C_TOWN, 0.22), true)
+	_draw_hint_plate()
+	_draw_banner_scales()
 	_draw_ghosts(now)
 	_draw_missiles()
 	# 爆撃機: 横長の六角形
@@ -326,6 +385,7 @@ func _draw() -> void:
 	_draw_bursts(now)
 	_draw_aims(now)
 	_draw_ground(now)
+	_draw_hud()
 	_draw_marks(now)
 	_draw_popups(now)
 	if _over_at != -1:
@@ -456,6 +516,11 @@ func _draw_ground(now: int) -> void:
 			PackedColorArray([top, top, bottom, bottom]))
 		draw_arc(Vector2(x, B.GROUND_Y), B.DUST_R * (0.3 + 0.7 * t), PI, TAU, 24, Color(Kit.C_TOWN, 0.6 * (1.0 - t)), 3.0, true)
 	_impacts = keep
+	# 地面の下は硝子の台(キーの札を載せる。上の帯と揃える)
+	var x0 := view.position.x - 8.0 - position.x
+	var x1 := view.end.x + 8.0 - position.x
+	draw_rect(Rect2(x0, B.GROUND_Y + 8.0, x1 - x0, view.end.y - B.GROUND_Y), Color(Kit.C_PANEL, 0.94))
+	Kit.draw_scale(self, x0, x1, B.GROUND_Y + 8.0, Color(Kit.C_AMBER, 0.3), 32.0, 4)
 	Kit.draw_ground(self)
 	var towns: Array = _snap["towns"]
 	for c in B.TOWN_COLS:
@@ -466,7 +531,6 @@ func _draw_ground(now: int) -> void:
 				var ph := fmod(float(now) / B.SMOKE_PERIOD_MS + k / 3.0, 1.0)
 				draw_circle(Vector2(Kit.col_x(c) - 20 + 18 * k + 10 * ph, B.GROUND_Y - 10 - 60 * ph), 5.0 + 10.0 * ph, Color(Kit.C_RUIN.lightened(0.2), 0.35 * (1.0 - ph)))
 		Kit.draw_town(self, Kit.col_x(c), ruin)
-	var f := Kit.font(700)
 	var hint := hint_col()
 	for i in B.COLS:
 		var x := Kit.col_x(i)
@@ -477,12 +541,12 @@ func _draw_ground(now: int) -> void:
 		var flashing := not flash.is_empty() and now - int(flash["at"]) < B.FLASH_MS
 		if flashing and flash["kind"] == "disabled":
 			Kit.draw_cross(self, Vector2(x, B.GROUND_Y - 44), 14.0, Kit.C_EMPTY)
-		if lit or i == hint:
-			# 押している・案内しているキーの文字に枠
-			var a := 1.0 if lit else 0.55 + 0.45 * absf(fmod(now / 500.0, 2.0) - 1.0)
-			draw_rect(Rect2(x - 20, 652, 40, 36), Color(Kit.C_AIM, 0.22 * a))
-			draw_rect(Rect2(x - 20, 652, 40, 36), Color(Kit.C_AIM, a), false, 2.0)
-		draw_string(f, Vector2(x - 40, 678), S.KEYS[i], HORIZONTAL_ALIGNMENT_CENTER, 80, 26, Kit.C_OFF if off else (Kit.C_AIM.lightened(0.5) if lit else Kit.C_TEXT))
+		var cap := Rect2(x - 19, 650, 38, 34)
+		if i == hint and not lit:
+			# 案内しているキーの札に脈打つ枠(点滅を弱める 入なら脈打たせない)
+			var a := 1.0 if reduce_flash else 0.55 + 0.45 * absf(fmod(now / 500.0, 2.0) - 1.0)
+			draw_rect(cap.grow(4), Color(Kit.C_AIM, a), false, 2.0)
+		Kit.draw_keycap(self, cap, S.KEYS[i], 22, lit, off)
 		var red: bool = flashing and flash["kind"] == "empty"
 		for k in B.AMMO_PER_WAVE:
 			var p := Vector2(x - 16 + 16 * k, 700)
@@ -490,6 +554,36 @@ func _draw_ground(now: int) -> void:
 				draw_circle(p, 5.0, Kit.C_AIM if not off else Kit.C_OFF)
 			else:
 				draw_arc(p, 5.0, 0, TAU, 16, Kit.C_EMPTY if red else Kit.C_OFF, 1.5, true)
+
+
+# 上の帯: 硝子の板を横いっぱいに、下の縁に目盛り。点・波・連鎖の字は子の Label(帯の中だけ)。
+func _draw_hud() -> void:
+	var x0 := view.position.x - 8.0 - position.x
+	var x1 := view.end.x + 8.0 - position.x
+	draw_rect(Rect2(x0, view.position.y - 8.0, x1 - x0, B.HUD_H - view.position.y + 8.0), Color(Kit.C_PANEL, 0.94))
+	Kit.draw_scale(self, x0, x1, B.HUD_H, Color(Kit.C_AMBER, 0.45), 32.0, 4, true)
+	Kit.draw_brackets(self, Rect2(436, 6, 408, B.HUD_H - 12), 10.0, Color(Kit.C_AMBER, 0.55), 2.0)
+
+
+# 最初の案内の板(上の帯から下がる札。左に琥珀の縦線)。ミサイルより先に描くので、板の上を通るミサイルは隠れない。
+func _draw_hint_plate() -> void:
+	if not _hint.visible:
+		return
+	var r := hint_rect
+	draw_rect(r, Color(Kit.C_PANEL, 0.9))
+	draw_rect(r, Color(Kit.C_RULE, 0.9), false, 1.0)
+	draw_line(r.position + Vector2(1.5, 0), Vector2(r.position.x + 1.5, r.end.y), Kit.C_AMBER, 3.0)
+
+
+# 真ん中の大きな字(波 n・波 n をしのいだ)の両側の目盛り。空の中なので琥珀でなく字の灰色。
+func _draw_banner_scales() -> void:
+	if not _banner.visible:
+		return
+	var tw := Kit.font(800).get_string_size(_banner.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 56).x
+	var y := _banner.position.y + _banner.size.y / 2.0
+	var c := Color(Kit.C_DIM, 0.55)
+	Kit.draw_scale(self, 640.0 - tw / 2.0 - 160.0, 640.0 - tw / 2.0 - 28.0, y, c, 16.0, 4, true)
+	Kit.draw_scale(self, 640.0 + tw / 2.0 + 28.0, 640.0 + tw / 2.0 + 160.0, y, c, 16.0, 4, true)
 
 
 # 落ちる先の印(着弾 1 秒前)。発射台と町より上に、下向きの三角を出す。点滅を弱める時は脈打たせない。

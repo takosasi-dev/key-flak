@@ -246,6 +246,8 @@ func test_pause_settings_back_and_key_check() -> bool:
 	release(m, KEY_A)
 	eq(m.current.held.keys(), [9], "離したキーは消える")
 	ok(m.current.last_key.contains("echo"), "キーの中身を文字で出す")
+	eq(m.current.key_rows.size(), 4, "最後に届いたキーは名前と値の 4 行")
+	eq(m.current.key_rows[0][1], "%d (%s)" % [KEY_A, OS.get_keycode_string(KEY_A)], "1 行目は physical_keycode の値")
 	press(m, KEY_ESCAPE)
 	ok(not m.current.keys_view, "Esc で設定へ")
 	press(m, KEY_ESCAPE)
@@ -276,6 +278,11 @@ func test_title_records() -> bool:
 	ok(best >= 18450, "1 回目の点を保存")
 	var want := (S.REC_FIRST % Score.comma(best)) + " / " + (S.REC_TODAY_BEST % Score.comma(best))
 	ok(texts.call().has(want), "今日の記録が出る")
+	var daily: Button = m.current.menu.buttons[0]
+	var note: Label = m.current.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == want)[0]
+	var nr: Rect2 = m.current._notes[0]
+	ok(nr.position.y > daily.get_rect().end.y and nr.end.y < m.current.menu.buttons[1].position.y - 7.0, "記録の札は今日の空のボタンの真下(次のボタンの照準の角に掛からない)")
+	ok(absf(nr.get_center().x - daily.get_rect().get_center().x) < 1.0 and note.get_rect().intersects(nr), "札は真ん中に揃う")
 	_done(m)
 	return true
 
@@ -369,6 +376,9 @@ func test_polish_first_hint() -> bool:
 	p._refresh()
 	eq(p.hint_col(), B.TEACH_COL1, "1 本目の列(F)を案内する")
 	ok(p._hint.visible and p._hint.text == S.FIRST_HINT % "F", "案内の文: %s" % p._hint.text)
+	ok(p._hint.position.y >= B.HUD_H and p._hint.get_rect().end.y < B.HUD_H + 60.0, "案内は上の帯のすぐ下(地面の近くを横切らない)")
+	var fx := B.COL_X0 + B.COL_W * B.TEACH_COL1
+	ok(p.hint_rect.size.x > 0.0 and not (p.hint_rect.position.x <= fx and fx <= p.hint_rect.end.x), "案内の板は案内する列(1 本目が落ちてくる所)に重ならない %s" % p.hint_rect)
 	press(m, KEY_F)
 	frames(m, 2)
 	ok(not p._hint.visible, "押すと案内が消える")
